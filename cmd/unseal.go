@@ -37,6 +37,10 @@ to quickly create a Cobra application.`,
 		appConfig.BindPFlag(cfgInit, cmd.PersistentFlags().Lookup(cfgInit))
 		appConfig.BindPFlag(cfgOnce, cmd.PersistentFlags().Lookup(cfgOnce))
 
+		appConfig.BindPFlag(cfgInitRootToken, cmd.PersistentFlags().Lookup(cfgInitRootToken))
+		appConfig.BindPFlag(cfgStoreRootToken, cmd.PersistentFlags().Lookup(cfgStoreRootToken))
+		appConfig.BindPFlag(cfgOverwriteExisting, cmd.PersistentFlags().Lookup(cfgOverwriteExisting))
+
 		unsealConfig.unsealPeriod = appConfig.GetDuration(cfgUnsealPeriod)
 		unsealConfig.proceedInit = appConfig.GetBool(cfgInit)
 		unsealConfig.runOnce = appConfig.GetBool(cfgOnce)
