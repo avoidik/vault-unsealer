@@ -93,15 +93,12 @@ to quickly create a Cobra application.`,
 					}
 				}
 
-				logrus.Infof("checking if vault is sealed...")
 				sealed, err := v.Sealed()
 				if err != nil {
 					logrus.Errorf("error checking if vault is sealed: %s", err.Error())
 					exitIfNecessary(1)
 					return
 				}
-
-				logrus.Infof("vault sealed: %t", sealed)
 
 				// If vault is not sealed, we stop here and wait
 				if !sealed {
