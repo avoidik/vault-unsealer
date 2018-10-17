@@ -72,9 +72,20 @@ to quickly create a Cobra application.`,
 		for {
 			func() {
 				if unsealConfig.proceedInit {
-					logrus.Infof("initializing vault...")
-					if err = v.Init(); err != nil {
-						logrus.Fatalf("error initializing vault: %s", err.Error())
+					initialized, err := v.Initialized()
+					if err != nil {
+						logrus.Errorf("error initializing vault: %s", err.Error())
+						return
+					}
+
+					if !initialized {
+						logrus.Infof("initializing vault...")
+						if err = v.Init(); err != nil {
+							logrus.Errorf("error initializing vault: %s", err.Error())
+							return
+						} else {
+							unsealConfig.proceedInit = false
+						}
 					} else {
 						unsealConfig.proceedInit = false
 					}
@@ -84,13 +95,12 @@ to quickly create a Cobra application.`,
 				sealed, err := v.Sealed()
 				if err != nil {
 					logrus.Errorf("error checking if vault is sealed: %s", err.Error())
-					exitIfNecessary(1)
 					return
 				}
 
 				logrus.Infof("vault sealed: %t", sealed)
 
-				// If vault is not sealed, we stop here and wait another 30 seconds
+				// If vault is not sealed, we stop here and wait
 				if !sealed {
 					exitIfNecessary(0)
 					return
@@ -98,7 +108,6 @@ to quickly create a Cobra application.`,
 
 				if err = v.Unseal(); err != nil {
 					logrus.Errorf("error unsealing vault: %s", err.Error())
-					exitIfNecessary(1)
 					return
 				}
 
@@ -107,7 +116,7 @@ to quickly create a Cobra application.`,
 				exitIfNecessary(0)
 			}()
 
-			// wait 30 seconds before trying again
+			// wait before trying again
 			time.Sleep(unsealConfig.unsealPeriod)
 		}
 	},

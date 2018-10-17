@@ -44,6 +44,7 @@ var _ Vault = &vault{}
 // Vault is an interface that can be used to attempt to perform actions against
 // a Vault server.
 type Vault interface {
+	Initialized() (bool, error)
 	Sealed() (bool, error)
 	Unseal() error
 	Init() error
@@ -61,6 +62,14 @@ func New(k kv.Service, cl *api.Client, config Config) (Vault, error) {
 		cl:       cl,
 		config:   &config,
 	}, nil
+}
+
+func (u *vault) Initialized() (bool, error) {
+	resp, err := u.cl.Sys().SealStatus()
+	if err != nil {
+		return false, fmt.Errorf("error checking status: %s", err.Error())
+	}
+	return resp.Initialized, nil
 }
 
 func (u *vault) Sealed() (bool, error) {
