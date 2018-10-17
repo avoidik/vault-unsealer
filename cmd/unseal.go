@@ -75,6 +75,7 @@ to quickly create a Cobra application.`,
 					initialized, err := v.Initialized()
 					if err != nil {
 						logrus.Errorf("error initializing vault: %s", err.Error())
+						exitIfNecessary(1)
 						return
 					}
 
@@ -82,6 +83,7 @@ to quickly create a Cobra application.`,
 						logrus.Infof("initializing vault...")
 						if err = v.Init(); err != nil {
 							logrus.Errorf("error initializing vault: %s", err.Error())
+							exitIfNecessary(1)
 							return
 						} else {
 							unsealConfig.proceedInit = false
@@ -95,6 +97,7 @@ to quickly create a Cobra application.`,
 				sealed, err := v.Sealed()
 				if err != nil {
 					logrus.Errorf("error checking if vault is sealed: %s", err.Error())
+					exitIfNecessary(1)
 					return
 				}
 
@@ -108,6 +111,7 @@ to quickly create a Cobra application.`,
 
 				if err = v.Unseal(); err != nil {
 					logrus.Errorf("error unsealing vault: %s", err.Error())
+					exitIfNecessary(1)
 					return
 				}
 
