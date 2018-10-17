@@ -116,9 +116,13 @@ func exitIfNecessary(code int) {
 }
 
 func init() {
-	unsealCmd.PersistentFlags().Duration(cfgUnsealPeriod, time.Second*30, "How often to attempt to unseal the vault instance")
-	unsealCmd.PersistentFlags().Bool(cfgInit, false, "Initialize vault instantce if not yet initialized")
-	unsealCmd.PersistentFlags().Bool(cfgOnce, false, "Execute unseal command only once")
+	unsealCmd.PersistentFlags().Duration(cfgUnsealPeriod, time.Second*30, "how often to attempt to unseal the vault instance")
+	unsealCmd.PersistentFlags().Bool(cfgInit, false, "initialize vault instantce if not yet initialized")
+	unsealCmd.PersistentFlags().Bool(cfgOnce, false, "execute unseal command only once")
+
+	unsealCmd.PersistentFlags().String(cfgInitRootToken, "", "root token for the new vault cluster")
+	unsealCmd.PersistentFlags().Bool(cfgStoreRootToken, true, "should the root token be stored in the key store")
+	unsealCmd.PersistentFlags().Bool(cfgOverwriteExisting, false, "overwrite existing unseal keys and root tokens, possibly dangerous!")
 
 	RootCmd.AddCommand(unsealCmd)
 }
