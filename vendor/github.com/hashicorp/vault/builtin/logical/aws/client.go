@@ -9,14 +9,17 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/go-cleanhttp"
 	"github.com/hashicorp/vault/helper/awsutil"
 	"github.com/hashicorp/vault/logical"
 )
 
+// NOTE: The caller is required to ensure that b.clientMutex is at least read locked
 func getRootConfig(ctx context.Context, s logical.Storage, clientType string) (*aws.Config, error) {
 	credsConfig := &awsutil.CredentialsConfig{}
 	var endpoint string
+	var maxRetries int = aws.UseServiceDefaultRetries
 
 	entry, err := s.Get(ctx, "config/root")
 	if err != nil {
@@ -25,12 +28,13 @@ func getRootConfig(ctx context.Context, s logical.Storage, clientType string) (*
 	if entry != nil {
 		var config rootConfig
 		if err := entry.DecodeJSON(&config); err != nil {
-			return nil, fmt.Errorf("error reading root configuration: %s", err)
+			return nil, errwrap.Wrapf("error reading root configuration: {{err}}", err)
 		}
 
 		credsConfig.AccessKey = config.AccessKey
 		credsConfig.SecretKey = config.SecretKey
 		credsConfig.Region = config.Region
+		maxRetries = config.MaxRetries
 		switch {
 		case clientType == "iam" && config.IAMEndpoint != "":
 			endpoint = *aws.String(config.IAMEndpoint)
@@ -61,10 +65,11 @@ func getRootConfig(ctx context.Context, s logical.Storage, clientType string) (*
 		Region:      aws.String(credsConfig.Region),
 		Endpoint:    &endpoint,
 		HTTPClient:  cleanhttp.DefaultClient(),
+		MaxRetries:  aws.Int(maxRetries),
 	}, nil
 }
 
-func clientIAM(ctx context.Context, s logical.Storage) (*iam.IAM, error) {
+func nonCachedClientIAM(ctx context.Context, s logical.Storage) (*iam.IAM, error) {
 	awsConfig, err := getRootConfig(ctx, s, "iam")
 	if err != nil {
 		return nil, err
@@ -78,7 +83,7 @@ func clientIAM(ctx context.Context, s logical.Storage) (*iam.IAM, error) {
 	return client, nil
 }
 
-func clientSTS(ctx context.Context, s logical.Storage) (*sts.STS, error) {
+func nonCachedClientSTS(ctx context.Context, s logical.Storage) (*sts.STS, error) {
 	awsConfig, err := getRootConfig(ctx, s, "sts")
 	if err != nil {
 		return nil, err

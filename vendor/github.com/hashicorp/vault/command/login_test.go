@@ -10,6 +10,7 @@ import (
 	credToken "github.com/hashicorp/vault/builtin/credential/token"
 	credUserpass "github.com/hashicorp/vault/builtin/credential/userpass"
 	"github.com/hashicorp/vault/command/token"
+	"github.com/hashicorp/vault/vault"
 )
 
 func testLoginCommand(tb testing.TB) (*cli.MockUi, *LoginCommand) {
@@ -78,7 +79,7 @@ func TestLoginCommand_Run(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if l, exp := len(storedToken), 36; l != exp {
+		if l, exp := len(storedToken), vault.TokenLength; l != exp {
 			t.Errorf("expected token to be %d characters, was %d: %q", exp, l, storedToken)
 		}
 	})
@@ -205,13 +206,13 @@ func TestLoginCommand_Run(t *testing.T) {
 
 		// Verify only the token was printed
 		token := ui.OutputWriter.String()
-		if l, exp := len(token), 36; l != exp {
+		if l, exp := len(token), vault.TokenLength; l != exp {
 			t.Errorf("expected token to be %d characters, was %d: %q", exp, l, token)
 		}
 
 		// Verify the token was not stored
 		if storedToken, err := tokenHelper.Get(); err != nil || storedToken != "" {
-			t.Fatalf("expted token to not be stored: %s: %q", err, storedToken)
+			t.Fatalf("expected token to not be stored: %s: %q", err, storedToken)
 		}
 	})
 

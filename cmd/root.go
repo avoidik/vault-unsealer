@@ -17,19 +17,16 @@ const cfgSecretThreshold = "secret-threshold"
 
 const cfgMode = "mode"
 const cfgModeValueAWSKMSSSM = "aws-kms-ssm"
-const cfgModeValueGoogleCloudKMSGCS = "google-cloud-kms-gcs"
+const cfgModeValueAWSKMS3 = "aws-kms-s3"
 const cfgModeValueLocal = "local"
 
-const cfgGoogleCloudKMSProject = "google-cloud-kms-project"
-const cfgGoogleCloudKMSLocation = "google-cloud-kms-location"
-const cfgGoogleCloudKMSKeyRing = "google-cloud-kms-key-ring"
-const cfgGoogleCloudKMSCryptoKey = "google-cloud-kms-crypto-key"
-
-const cfgGoogleCloudStorageBucket = "google-cloud-storage-bucket"
-const cfgGoogleCloudStoragePrefix = "google-cloud-storage-prefix"
-
+const cfgAWSKMSRegion = "aws-kms-region"
 const cfgAWSKMSKeyID = "aws-kms-key-id"
 const cfgAWSSSMKeyPrefix = "aws-ssm-key-prefix"
+
+const cfgAWSS3Bucket = "aws-s3-bucket"
+const cfgAWSS3Prefix = "aws-s3-prefix"
+const cfgAWSS3Region = "aws-s3-region"
 
 const cfgLocalKeyDir = "local-key-dir"
 
@@ -41,7 +38,7 @@ var RootCmd = &cobra.Command{
 Hashicorp Vault.
 
 It will continuously attempt to unseal the target Vault instance, by retrieving
-unseal keys from a Google Cloud, AWS KMS keyring or local in path
+unseal keys from a AWS KMS keyring or local in path
 `,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
@@ -77,29 +74,31 @@ func init() {
 	// SelectMode
 	configStringVar(
 		cfgMode,
-		cfgModeValueGoogleCloudKMSGCS,
-		fmt.Sprintf("Select the mode to use '%s' => Google Cloud Storage with encryption using Google KMS; '%s' => AWS SSM parameter store using AWS KMS encryption; %s => Use local keys in path", cfgModeValueGoogleCloudKMSGCS, cfgModeValueAWSKMSSSM, cfgModeValueLocal),
+		cfgModeValueAWSKMSSSM,
+		fmt.Sprintf(`Select the mode to use:
+			'%s' => AWS SSM parameter store using AWS KMS encryption;
+			'%s' => AWS S3 Object Storage using AWS KMS encryption;
+			'%s' => Use local keys in path`,
+			cfgModeValueAWSKMSSSM,
+			cfgModeValueAWSKMS3,
+			cfgModeValueLocal),
 	)
 
 	// Secret config
 	configIntVar(cfgSecretShares, 1, "Total count of secret shares that exist")
 	configIntVar(cfgSecretThreshold, 1, "Minimum required secret shares to unseal")
 
-	// Google Cloud KMS flags
-	configStringVar(cfgGoogleCloudKMSProject, "", "The Google Cloud KMS project to use")
-	configStringVar(cfgGoogleCloudKMSLocation, "", "The Google Cloud KMS location to use (eg. 'global', 'europe-west1')")
-	configStringVar(cfgGoogleCloudKMSKeyRing, "", "The name of the Google Cloud KMS key ring to use")
-	configStringVar(cfgGoogleCloudKMSCryptoKey, "", "The name of the Google Cloud KMS crypt key to use")
-
-	// Google Cloud Storage flags
-	configStringVar(cfgGoogleCloudStorageBucket, "", "The name of the Google Cloud Storage bucket to store values in")
-	configStringVar(cfgGoogleCloudStoragePrefix, "", "The prefix to use for values store in Google Cloud Storage")
-
 	// AWS KMS Storage flags
-	configStringVar("aws-kms-key-id", "", "The ID or ARN of the AWS KMS key to encrypt values")
+	configStringVar(cfgAWSKMSRegion, "", "The region of the AWS KMS key to encrypt values")
+	configStringVar(cfgAWSKMSKeyID, "", "The ID or ARN of the AWS KMS key to encrypt values")
 
 	// AWS SSM Parameter Storage flags
-	configStringVar("aws-ssm-key-prefix", "", "The Key Prefix for SSM Parameter store")
+	configStringVar(cfgAWSSSMKeyPrefix, "", "The Key Prefix for SSM Parameter store")
+
+	// AWS S3 Object Storage flags
+	configStringVar(cfgAWSS3Bucket, "", "The name of the AWS S3 bucket to store values in")
+	configStringVar(cfgAWSS3Prefix, "", "The prefix to use for storing values in AWS S3")
+	configStringVar(cfgAWSS3Region, "us-east-1", "The region to use for storing values in AWS S3")
 
 	configStringVar("local-key-dir", "", "Directory of key shares in path")
 }

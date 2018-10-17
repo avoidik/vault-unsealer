@@ -31,8 +31,8 @@ func NewWithSession(sess *session.Session, store kv.Service, kmsID string) (kv.S
 	}, nil
 }
 
-func New(store kv.Service, kmsID string) (kv.Service, error) {
-	sess, err := session.NewSession()
+func New(store kv.Service, region string, kmsID string) (kv.Service, error) {
+	sess, err := session.NewSession(aws.NewConfig().WithRegion(region))
 	if err != nil {
 		return nil, err
 	}

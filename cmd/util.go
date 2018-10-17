@@ -8,9 +8,8 @@ import (
 	"github.com/jetstack/vault-unsealer/pkg/kv"
 	"github.com/jetstack/vault-unsealer/pkg/kv/aws_kms"
 	"github.com/jetstack/vault-unsealer/pkg/kv/aws_ssm"
-	"github.com/jetstack/vault-unsealer/pkg/kv/cloudkms"
-	"github.com/jetstack/vault-unsealer/pkg/kv/gcs"
 	"github.com/jetstack/vault-unsealer/pkg/kv/local"
+	"github.com/jetstack/vault-unsealer/pkg/kv/s3"
 
 	"github.com/jetstack/vault-unsealer/pkg/vault"
 )
@@ -33,26 +32,21 @@ func vaultConfigForConfig(cfg *viper.Viper) (vault.Config, error) {
 func kvStoreForConfig(cfg *viper.Viper) (kv.Service, error) {
 
 	switch cfg.GetString(cfgMode) {
-	case cfgModeValueGoogleCloudKMSGCS:
-
-		g, err := gcs.New(
-			cfg.GetString(cfgGoogleCloudStorageBucket),
-			cfg.GetString(cfgGoogleCloudStoragePrefix),
+	case cfgModeValueAWSKMS3:
+		s3, err := s3.New(
+			cfg.GetString(cfgAWSS3Region),
+			cfg.GetString(cfgAWSS3Bucket),
+			cfg.GetString(cfgAWSS3Prefix),
 		)
 
 		if err != nil {
-			return nil, fmt.Errorf("error creating google cloud storage kv store: %s", err.Error())
+			return nil, fmt.Errorf("error creating AWS S3 kv store: %s", err.Error())
 		}
 
-		kms, err := cloudkms.New(g,
-			cfg.GetString(cfgGoogleCloudKMSProject),
-			cfg.GetString(cfgGoogleCloudKMSLocation),
-			cfg.GetString(cfgGoogleCloudKMSKeyRing),
-			cfg.GetString(cfgGoogleCloudKMSCryptoKey),
-		)
+		kms, err := aws_kms.New(s3, cfg.GetString(cfgAWSKMSRegion), cfg.GetString(cfgAWSKMSKeyID))
 
 		if err != nil {
-			return nil, fmt.Errorf("error creating google cloud kms kv store: %s", err.Error())
+			return nil, fmt.Errorf("error creating AWS KMS kv store: %s", err.Error())
 		}
 
 		return kms, nil
@@ -63,7 +57,7 @@ func kvStoreForConfig(cfg *viper.Viper) (kv.Service, error) {
 			return nil, fmt.Errorf("error creating AWS SSM kv store: %s", err.Error())
 		}
 
-		kms, err := aws_kms.New(ssm, cfg.GetString(cfgAWSKMSKeyID))
+		kms, err := aws_kms.New(ssm, cfg.GetString(cfgAWSKMSRegion), cfg.GetString(cfgAWSKMSKeyID))
 		if err != nil {
 			return nil, fmt.Errorf("error creating AWS KMS ID kv store: %s", err.Error())
 		}

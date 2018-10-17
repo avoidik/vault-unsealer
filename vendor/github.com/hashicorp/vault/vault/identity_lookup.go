@@ -29,7 +29,7 @@ func lookupPaths(i *IdentityStore) []*framework.Path {
 				},
 				"alias_name": {
 					Type:        framework.TypeString,
-					Description: "Name of the alias. This should be supplied in conjuction with 'alias_mount_accessor'.",
+					Description: "Name of the alias. This should be supplied in conjunction with 'alias_mount_accessor'.",
 				},
 				"alias_mount_accessor": {
 					Type:        framework.TypeString,
@@ -60,7 +60,7 @@ func lookupPaths(i *IdentityStore) []*framework.Path {
 				},
 				"alias_name": {
 					Type:        framework.TypeString,
-					Description: "Name of the alias. This should be supplied in conjuction with 'alias_mount_accessor'.",
+					Description: "Name of the alias. This should be supplied in conjunction with 'alias_mount_accessor'.",
 				},
 				"alias_mount_accessor": {
 					Type:        framework.TypeString,
@@ -145,7 +145,7 @@ func (i *IdentityStore) pathLookupEntityUpdate() framework.OperationFunc {
 			}
 
 		case name != "":
-			entity, err = i.MemDBEntityByName(name, false)
+			entity, err = i.MemDBEntityByName(ctx, name, false)
 			if err != nil {
 				return nil, err
 			}
@@ -185,7 +185,7 @@ func (i *IdentityStore) pathLookupEntityUpdate() framework.OperationFunc {
 			return nil, nil
 		}
 
-		return i.handleEntityReadCommon(entity)
+		return i.handleEntityReadCommon(ctx, entity)
 	}
 }
 
@@ -256,7 +256,7 @@ func (i *IdentityStore) pathLookupGroupUpdate() framework.OperationFunc {
 				return nil, err
 			}
 		case name != "":
-			group, err = i.MemDBGroupByName(name, false)
+			group, err = i.MemDBGroupByName(ctx, name, false)
 			if err != nil {
 				return nil, err
 			}
@@ -295,7 +295,7 @@ func (i *IdentityStore) pathLookupGroupUpdate() framework.OperationFunc {
 			return nil, nil
 		}
 
-		return i.handleGroupReadCommon(group)
+		return i.handleGroupReadCommon(ctx, group)
 	}
 }
 

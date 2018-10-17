@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/vault/helper/consts"
+	"github.com/hashicorp/vault/helper/license"
 	"github.com/hashicorp/vault/helper/pluginutil"
 	"github.com/hashicorp/vault/helper/wrapping"
 	"github.com/hashicorp/vault/logical"
@@ -109,6 +110,11 @@ func (s *SystemViewClient) LookupPlugin(ctx context.Context, name string) (*plug
 	return nil, fmt.Errorf("cannot call LookupPlugin from a plugin backend")
 }
 
+func (s *SystemViewClient) HasFeature(feature license.Features) bool {
+	// Not implemented
+	return false
+}
+
 func (s *SystemViewClient) MlockEnabled() bool {
 	var reply MlockEnabledReply
 	err := s.client.Call("Plugin.MlockEnabled", new(interface{}), &reply)
@@ -117,6 +123,47 @@ func (s *SystemViewClient) MlockEnabled() bool {
 	}
 
 	return reply.MlockEnabled
+}
+
+func (s *SystemViewClient) LocalMount() bool {
+	var reply LocalMountReply
+	err := s.client.Call("Plugin.LocalMount", new(interface{}), &reply)
+	if err != nil {
+		return false
+	}
+
+	return reply.Local
+}
+
+func (s *SystemViewClient) EntityInfo(entityID string) (*logical.Entity, error) {
+	var reply EntityInfoReply
+	args := &EntityInfoArgs{
+		EntityID: entityID,
+	}
+
+	err := s.client.Call("Plugin.EntityInfo", args, &reply)
+	if err != nil {
+		return nil, err
+	}
+	if reply.Error != nil {
+		return nil, reply.Error
+	}
+
+	return reply.Entity, nil
+}
+
+func (s *SystemViewClient) PluginEnv(_ context.Context) (*logical.PluginEnvironment, error) {
+	var reply PluginEnvReply
+
+	err := s.client.Call("Plugin.PluginEnv", new(interface{}), &reply)
+	if err != nil {
+		return nil, err
+	}
+	if reply.Error != nil {
+		return nil, reply.Error
+	}
+
+	return reply.PluginEnvironment, nil
 }
 
 type SystemViewServer struct {
@@ -202,6 +249,45 @@ func (s *SystemViewServer) MlockEnabled(_ interface{}, reply *MlockEnabledReply)
 	return nil
 }
 
+func (s *SystemViewServer) LocalMount(_ interface{}, reply *LocalMountReply) error {
+	local := s.impl.LocalMount()
+	*reply = LocalMountReply{
+		Local: local,
+	}
+
+	return nil
+}
+
+func (s *SystemViewServer) EntityInfo(args *EntityInfoArgs, reply *EntityInfoReply) error {
+	entity, err := s.impl.EntityInfo(args.EntityID)
+	if err != nil {
+		*reply = EntityInfoReply{
+			Error: wrapError(err),
+		}
+		return nil
+	}
+	*reply = EntityInfoReply{
+		Entity: entity,
+	}
+
+	return nil
+}
+
+func (s *SystemViewServer) PluginEnv(_ interface{}, reply *PluginEnvReply) error {
+	pluginEnv, err := s.impl.PluginEnv(context.Background())
+	if err != nil {
+		*reply = PluginEnvReply{
+			Error: wrapError(err),
+		}
+		return nil
+	}
+	*reply = PluginEnvReply{
+		PluginEnvironment: pluginEnv,
+	}
+
+	return nil
+}
+
 type DefaultLeaseTTLReply struct {
 	DefaultLeaseTTL time.Duration
 }
@@ -244,4 +330,22 @@ type ResponseWrapDataReply struct {
 
 type MlockEnabledReply struct {
 	MlockEnabled bool
+}
+
+type LocalMountReply struct {
+	Local bool
+}
+
+type EntityInfoArgs struct {
+	EntityID string
+}
+
+type EntityInfoReply struct {
+	Entity *logical.Entity
+	Error  error
+}
+
+type PluginEnvReply struct {
+	PluginEnvironment *logical.PluginEnvironment
+	Error             error
 }

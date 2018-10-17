@@ -52,7 +52,7 @@ func TestPluginCatalog_CRUD(t *testing.T) {
 	defer file.Close()
 
 	command := fmt.Sprintf("%s", filepath.Base(file.Name()))
-	err = core.pluginCatalog.Set(context.Background(), "mysql-database-plugin", command, []string{"--test"}, []byte{'1'})
+	err = core.pluginCatalog.Set(context.Background(), "mysql-database-plugin", command, []string{"--test"}, []string{"FOO=BAR"}, []byte{'1'})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,6 +67,7 @@ func TestPluginCatalog_CRUD(t *testing.T) {
 		Name:    "mysql-database-plugin",
 		Command: filepath.Join(sym, filepath.Base(file.Name())),
 		Args:    []string{"--test"},
+		Env:     []string{"FOO=BAR"},
 		Sha256:  []byte{'1'},
 		Builtin: false,
 	}
@@ -141,13 +142,13 @@ func TestPluginCatalog_List(t *testing.T) {
 	defer file.Close()
 
 	command := filepath.Base(file.Name())
-	err = core.pluginCatalog.Set(context.Background(), "mysql-database-plugin", command, []string{"--test"}, []byte{'1'})
+	err = core.pluginCatalog.Set(context.Background(), "mysql-database-plugin", command, []string{"--test"}, []string{}, []byte{'1'})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Set another plugin
-	err = core.pluginCatalog.Set(context.Background(), "aaaaaaa", command, []string{"--test"}, []byte{'1'})
+	err = core.pluginCatalog.Set(context.Background(), "aaaaaaa", command, []string{"--test"}, []string{}, []byte{'1'})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +168,7 @@ func TestPluginCatalog_List(t *testing.T) {
 		t.Fatalf("expected did not match actual, got %#v\n expected %#v\n", plugins[0], "aaaaaaa")
 	}
 
-	// verify the builtin pluings are correct
+	// verify the builtin plugins are correct
 	for i, p := range builtinKeys {
 		if !reflect.DeepEqual(plugins[i+1], p) {
 			t.Fatalf("expected did not match actual, got %#v\n expected %#v\n", plugins[i+1], p)

@@ -29,18 +29,11 @@ This endpoint creates a new alias for an entity.
 - `mount_accessor` `(string: <required>)` - Accessor of the mount to which the
   alias should belong to.
 
-- `metadata` `(key-value-map: {})` – Metadata to be associated with the
-  alias.
-
 ### Sample Payload
 
 ```json
 {
   "name": "testuser",
-  "metadata": {
-    "group": "san_francisco",
-    "region": "west"
-  },
   "canonical_id": "404e57bc-a0b1-a80f-0a73-b6e92e8a52d3",
   "mount_accessor": "auth_userpass_e50b1a44"
 }
@@ -53,7 +46,7 @@ $ curl \
     --header "X-Vault-Token: ..." \
     --request POST \
     --data @payload.json \
-    https://vault.rocks/v1/identity/entity-alias
+    http://127.0.0.1:8200/v1/identity/entity-alias
 ```
 
 ### Sample Response
@@ -84,7 +77,7 @@ This endpoint queries the entity alias by its identifier.
 ```
 $ curl \
     --header "X-Vault-Token: ..." \
-    https://vault.rocks/v1/identity/entity-alias/id/34982d3d-e3ce-5d8b-6e5f-b9bb34246c31
+    http://127.0.0.1:8200/v1/identity/entity-alias/id/34982d3d-e3ce-5d8b-6e5f-b9bb34246c31
 ```
 
 ### Sample Response
@@ -130,18 +123,11 @@ This endpoint is used to update an existing entity alias.
 - `mount_accessor` `(string: <required>)` - Accessor of the mount to which the
   alias should belong to.
 
-- `metadata` `(key-value-map: {})` – Metadata to be associated with the
-  alias. Format should be a list of `key=value` pairs.
-
 ### Sample Payload
 
 ```json
 {
   "name": "testuser",
-  "metadata": {
-    "group": "philadelphia",
-    "region": "east"
-  },
   "canonical_id": "404e57bc-a0b1-a80f-0a73-b6e92e8a52d3",
   "mount_accessor": "auth_userpass_e50b1a44"
 }
@@ -154,7 +140,7 @@ $ curl \
     --header "X-Vault-Token: ..." \
     --request POST \
     --data @payload.json \
-    https://vault.rocks/v1/identity/entity-alias/id/34982d3d-e3ce-5d8b-6e5f-b9bb34246c31
+    http://127.0.0.1:8200/v1/identity/entity-alias/id/34982d3d-e3ce-5d8b-6e5f-b9bb34246c31
 ```
 
 ### Sample Response
@@ -186,7 +172,7 @@ This endpoint deletes an alias from its corresponding entity.
 $ curl \
     --header "X-Vault-Token: ..." \
     --request DELETE \
-    https://vault.rocks/v1/identity/entity-alias/id/34982d3d-e3ce-5d8b-6e5f-b9bb34246c31
+    http://127.0.0.1:8200/v1/identity/entity-alias/id/34982d3d-e3ce-5d8b-6e5f-b9bb34246c31
 ```
 
 ### List Entity Aliases by ID
@@ -204,7 +190,7 @@ This endpoint returns a list of available entity aliases by their identifiers.
 $ curl \
     --header "X-Vault-Token: ..." \
     --request LIST \
-    https://vault.rocks/v1/identity/entity-alias/id
+    http://127.0.0.1:8200/v1/identity/entity-alias/id
 ```
 
 ### Sample Response

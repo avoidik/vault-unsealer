@@ -7,6 +7,7 @@ import (
 
 	"github.com/golang/protobuf/ptypes"
 	"github.com/hashicorp/vault/helper/errutil"
+	"github.com/hashicorp/vault/helper/parseutil"
 	"github.com/hashicorp/vault/helper/wrapping"
 	"github.com/hashicorp/vault/logical"
 )
@@ -136,6 +137,7 @@ func ProtoLeaseOptionsToLogicalLeaseOptions(l *LeaseOptions) (logical.LeaseOptio
 		Renewable: l.Renewable,
 		Increment: time.Duration(l.Increment),
 		IssueTime: t,
+		MaxTTL:    time.Duration(l.MaxTTL),
 	}, err
 }
 
@@ -150,6 +152,7 @@ func LogicalLeaseOptionsToProtoLeaseOptions(l logical.LeaseOptions) (*LeaseOptio
 		Renewable: l.Renewable,
 		Increment: int64(l.Increment),
 		IssueTime: t,
+		MaxTTL:    int64(l.MaxTTL),
 	}, err
 }
 
@@ -220,7 +223,7 @@ func LogicalRequestToProtoRequest(r *logical.Request) (*Request, error) {
 
 	headers := map[string]*Header{}
 	for k, v := range r.Headers {
-		headers[k] = &Header{v}
+		headers[k] = &Header{Header: v}
 	}
 
 	return &Request{
@@ -240,10 +243,10 @@ func LogicalRequestToProtoRequest(r *logical.Request) (*Request, error) {
 		MountAccessor:            r.MountAccessor,
 		WrapInfo:                 LogicalRequestWrapInfoToProtoRequestWrapInfo(r.WrapInfo),
 		ClientTokenRemainingUses: int64(r.ClientTokenRemainingUses),
-		//MFACreds: MFACreds,
-		EntityID:        r.EntityID,
-		PolicyOverride:  r.PolicyOverride,
-		Unauthenticated: r.Unauthenticated,
+		Connection:               LogicalConnectionToProtoConnection(r.Connection),
+		EntityID:                 r.EntityID,
+		PolicyOverride:           r.PolicyOverride,
+		Unauthenticated:          r.Unauthenticated,
 	}, nil
 }
 
@@ -293,11 +296,31 @@ func ProtoRequestToLogicalRequest(r *Request) (*logical.Request, error) {
 		MountAccessor:            r.MountAccessor,
 		WrapInfo:                 ProtoRequestWrapInfoToLogicalRequestWrapInfo(r.WrapInfo),
 		ClientTokenRemainingUses: int(r.ClientTokenRemainingUses),
-		//MFACreds: MFACreds,
-		EntityID:        r.EntityID,
-		PolicyOverride:  r.PolicyOverride,
-		Unauthenticated: r.Unauthenticated,
+		Connection:               ProtoConnectionToLogicalConnection(r.Connection),
+		EntityID:                 r.EntityID,
+		PolicyOverride:           r.PolicyOverride,
+		Unauthenticated:          r.Unauthenticated,
 	}, nil
+}
+
+func LogicalConnectionToProtoConnection(c *logical.Connection) *Connection {
+	if c == nil {
+		return nil
+	}
+
+	return &Connection{
+		RemoteAddr: c.RemoteAddr,
+	}
+}
+
+func ProtoConnectionToLogicalConnection(c *Connection) *logical.Connection {
+	if c == nil {
+		return nil
+	}
+
+	return &logical.Connection{
+		RemoteAddr: c.RemoteAddr,
+	}
 }
 
 func LogicalRequestWrapInfoToProtoRequestWrapInfo(i *logical.RequestWrapInfo) *RequestWrapInfo {
@@ -441,30 +464,6 @@ func LogicalResponseToProtoResponse(r *logical.Response) (*Response, error) {
 	}, nil
 }
 
-func LogicalAliasToProtoAlias(a *logical.Alias) *Alias {
-	if a == nil {
-		return nil
-	}
-
-	return &Alias{
-		MountType:     a.MountType,
-		MountAccessor: a.MountAccessor,
-		Name:          a.Name,
-	}
-}
-
-func ProtoAliasToLogicalAlias(a *Alias) *logical.Alias {
-	if a == nil {
-		return nil
-	}
-
-	return &logical.Alias{
-		MountType:     a.MountType,
-		MountAccessor: a.MountAccessor,
-		Name:          a.Name,
-	}
-}
-
 func LogicalAuthToProtoAuth(a *logical.Auth) (*Auth, error) {
 	if a == nil {
 		return nil, nil
@@ -475,29 +474,33 @@ func LogicalAuthToProtoAuth(a *logical.Auth) (*Auth, error) {
 		return nil, err
 	}
 
-	groupAliases := make([]*Alias, len(a.GroupAliases))
-	for i, al := range a.GroupAliases {
-		groupAliases[i] = LogicalAliasToProtoAlias(al)
-	}
-
 	lo, err := LogicalLeaseOptionsToProtoLeaseOptions(a.LeaseOptions)
 	if err != nil {
 		return nil, err
 	}
 
+	boundCIDRs := make([]string, len(a.BoundCIDRs))
+	for i, cidr := range a.BoundCIDRs {
+		boundCIDRs[i] = cidr.String()
+	}
+
 	return &Auth{
-		LeaseOptions: lo,
-		InternalData: string(buf[:]),
-		DisplayName:  a.DisplayName,
-		Policies:     a.Policies,
-		Metadata:     a.Metadata,
-		ClientToken:  a.ClientToken,
-		Accessor:     a.Accessor,
-		Period:       int64(a.Period),
-		NumUses:      int64(a.NumUses),
-		EntityID:     a.EntityID,
-		Alias:        LogicalAliasToProtoAlias(a.Alias),
-		GroupAliases: groupAliases,
+		LeaseOptions:     lo,
+		InternalData:     string(buf[:]),
+		DisplayName:      a.DisplayName,
+		Policies:         a.Policies,
+		TokenPolicies:    a.TokenPolicies,
+		IdentityPolicies: a.IdentityPolicies,
+		Metadata:         a.Metadata,
+		ClientToken:      a.ClientToken,
+		Accessor:         a.Accessor,
+		Period:           int64(a.Period),
+		NumUses:          int64(a.NumUses),
+		EntityID:         a.EntityID,
+		Alias:            a.Alias,
+		GroupAliases:     a.GroupAliases,
+		BoundCIDRs:       boundCIDRs,
+		ExplicitMaxTTL:   int64(a.ExplicitMaxTTL),
 	}, nil
 }
 
@@ -512,28 +515,104 @@ func ProtoAuthToLogicalAuth(a *Auth) (*logical.Auth, error) {
 		return nil, err
 	}
 
-	groupAliases := make([]*logical.Alias, len(a.GroupAliases))
-	for i, al := range a.GroupAliases {
-		groupAliases[i] = ProtoAliasToLogicalAlias(al)
-	}
-
 	lo, err := ProtoLeaseOptionsToLogicalLeaseOptions(a.LeaseOptions)
 	if err != nil {
 		return nil, err
 	}
 
+	boundCIDRs, err := parseutil.ParseAddrs(a.BoundCIDRs)
+	if err != nil {
+		return nil, err
+	}
+	if len(boundCIDRs) == 0 {
+		// On inbound auths, if auth.BoundCIDRs is empty, it will be nil.
+		// Let's match that behavior outbound.
+		boundCIDRs = nil
+	}
+
 	return &logical.Auth{
-		LeaseOptions: lo,
-		InternalData: data,
-		DisplayName:  a.DisplayName,
-		Policies:     a.Policies,
-		Metadata:     a.Metadata,
-		ClientToken:  a.ClientToken,
-		Accessor:     a.Accessor,
-		Period:       time.Duration(a.Period),
-		NumUses:      int(a.NumUses),
-		EntityID:     a.EntityID,
-		Alias:        ProtoAliasToLogicalAlias(a.Alias),
-		GroupAliases: groupAliases,
+		LeaseOptions:     lo,
+		InternalData:     data,
+		DisplayName:      a.DisplayName,
+		Policies:         a.Policies,
+		TokenPolicies:    a.TokenPolicies,
+		IdentityPolicies: a.IdentityPolicies,
+		Metadata:         a.Metadata,
+		ClientToken:      a.ClientToken,
+		Accessor:         a.Accessor,
+		Period:           time.Duration(a.Period),
+		NumUses:          int(a.NumUses),
+		EntityID:         a.EntityID,
+		Alias:            a.Alias,
+		GroupAliases:     a.GroupAliases,
+		BoundCIDRs:       boundCIDRs,
+		ExplicitMaxTTL:   time.Duration(a.ExplicitMaxTTL),
+	}, nil
+}
+
+func LogicalTokenEntryToProtoTokenEntry(t *logical.TokenEntry) *TokenEntry {
+	if t == nil {
+		return nil
+	}
+
+	boundCIDRs := make([]string, len(t.BoundCIDRs))
+	for i, cidr := range t.BoundCIDRs {
+		boundCIDRs[i] = cidr.String()
+	}
+
+	return &TokenEntry{
+		ID:             t.ID,
+		Accessor:       t.Accessor,
+		Parent:         t.Parent,
+		Policies:       t.Policies,
+		Path:           t.Path,
+		Meta:           t.Meta,
+		DisplayName:    t.DisplayName,
+		NumUses:        int64(t.NumUses),
+		CreationTime:   t.CreationTime,
+		TTL:            int64(t.TTL),
+		ExplicitMaxTTL: int64(t.ExplicitMaxTTL),
+		Role:           t.Role,
+		Period:         int64(t.Period),
+		EntityID:       t.EntityID,
+		BoundCIDRs:     boundCIDRs,
+		NamespaceID:    t.NamespaceID,
+		CubbyholeID:    t.CubbyholeID,
+	}
+}
+
+func ProtoTokenEntryToLogicalTokenEntry(t *TokenEntry) (*logical.TokenEntry, error) {
+	if t == nil {
+		return nil, nil
+	}
+
+	boundCIDRs, err := parseutil.ParseAddrs(t.BoundCIDRs)
+	if err != nil {
+		return nil, err
+	}
+	if len(boundCIDRs) == 0 {
+		// On inbound auths, if auth.BoundCIDRs is empty, it will be nil.
+		// Let's match that behavior outbound.
+		boundCIDRs = nil
+	}
+
+	return &logical.TokenEntry{
+		ID:             t.ID,
+		Accessor:       t.Accessor,
+		Parent:         t.Parent,
+		Policies:       t.Policies,
+		Path:           t.Path,
+		Meta:           t.Meta,
+		DisplayName:    t.DisplayName,
+		NumUses:        int(t.NumUses),
+		CreationTime:   t.CreationTime,
+		TTL:            time.Duration(t.TTL),
+		ExplicitMaxTTL: time.Duration(t.ExplicitMaxTTL),
+		Role:           t.Role,
+		Period:         time.Duration(t.Period),
+		EntityID:       t.EntityID,
+		BoundCIDRs:     boundCIDRs,
+		NamespaceID:    t.NamespaceID,
+		CubbyholeID:    t.CubbyholeID,
 	}, nil
 }

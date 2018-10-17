@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/hashicorp/errwrap"
+	"github.com/hashicorp/vault/helper/license"
 	"github.com/hashicorp/vault/logical"
 )
 
@@ -68,6 +70,10 @@ type Path struct {
 	// must have UpdateCapability on the path.
 	ExistenceCheck ExistenceFunc
 
+	// FeatureRequired, if implemented, will validate if the given feature is
+	// enabled for the set of paths
+	FeatureRequired license.Features
+
 	// Help is text describing how to use this path. This will be used
 	// to auto-generate the help operation. The Path will automatically
 	// generate a parameter listing and URL structure based on the
@@ -122,7 +128,7 @@ func (p *Path) helpCallback() OperationFunc {
 
 		help, err := executeTemplate(pathHelpTemplate, &tplData)
 		if err != nil {
-			return nil, fmt.Errorf("error executing template: %s", err)
+			return nil, errwrap.Wrapf("error executing template: {{err}}", err)
 		}
 
 		return logical.HelpResponse(help, nil), nil

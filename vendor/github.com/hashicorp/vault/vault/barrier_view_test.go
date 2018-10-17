@@ -283,6 +283,7 @@ func TestBarrierView_ClearView(t *testing.T) {
 		t.Fatalf("have keys: %#v", out)
 	}
 }
+
 func TestBarrierView_Readonly(t *testing.T) {
 	_, barrier, _ := mockBarrier(t)
 	view := NewBarrierView(barrier, "foo/")
@@ -294,7 +295,7 @@ func TestBarrierView_Readonly(t *testing.T) {
 	}
 
 	// Enable read only mode
-	view.readonly = true
+	view.readOnlyErr = logical.ErrReadOnly
 
 	// Put should fail in readonly mode
 	if err := view.Put(context.Background(), entry.Logical()); err != logical.ErrReadOnly {

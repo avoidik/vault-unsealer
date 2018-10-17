@@ -8,9 +8,12 @@ import (
 	"github.com/hashicorp/errwrap"
 
 	"github.com/hashicorp/vault/helper/consts"
+	"github.com/hashicorp/vault/helper/license"
+	"github.com/hashicorp/vault/helper/namespace"
 	"github.com/hashicorp/vault/helper/pluginutil"
 	"github.com/hashicorp/vault/helper/wrapping"
 	"github.com/hashicorp/vault/logical"
+	"github.com/hashicorp/vault/version"
 )
 
 type dynamicSystemView struct {
@@ -32,7 +35,7 @@ func (d dynamicSystemView) SudoPrivilege(ctx context.Context, path string, token
 	// Resolve the token policy
 	te, err := d.core.tokenStore.Lookup(ctx, token)
 	if err != nil {
-		d.core.logger.Error("core: failed to lookup token", "error", err)
+		d.core.logger.Error("failed to lookup token", "error", err)
 		return false
 	}
 
@@ -42,8 +45,35 @@ func (d dynamicSystemView) SudoPrivilege(ctx context.Context, path string, token
 		return false
 	}
 
-	// Construct the corresponding ACL object
-	acl, err := d.core.policyStore.ACL(ctx, te.Policies...)
+	policies := make(map[string][]string)
+	// Add token policies
+	policies[te.NamespaceID] = append(policies[te.NamespaceID], te.Policies...)
+
+	tokenNS, err := NamespaceByID(ctx, te.NamespaceID, d.core)
+	if err != nil {
+		d.core.logger.Error("failed to lookup token namespace", "error", err)
+		return false
+	}
+	if tokenNS == nil {
+		d.core.logger.Error("failed to lookup token namespace", "error", namespace.ErrNoNamespace)
+		return false
+	}
+
+	// Add identity policies from all the namespaces
+	entity, identityPolicies, err := d.core.fetchEntityAndDerivedPolicies(ctx, tokenNS, te.EntityID)
+	if err != nil {
+		d.core.logger.Error("failed to fetch identity policies", "error", err)
+		return false
+	}
+	for nsID, nsPolicies := range identityPolicies {
+		policies[nsID] = append(policies[nsID], nsPolicies...)
+	}
+
+	tokenCtx := namespace.ContextWithNamespace(ctx, tokenNS)
+
+	// Construct the corresponding ACL object. Derive and use a new context that
+	// uses the req.ClientToken's namespace
+	acl, err := d.core.policyStore.ACL(tokenCtx, entity, policies)
 	if err != nil {
 		d.core.logger.Error("failed to retrieve ACL for token's policies", "token_policies", te.Policies, "error", err)
 		return false
@@ -55,7 +85,7 @@ func (d dynamicSystemView) SudoPrivilege(ctx context.Context, path string, token
 	req := new(logical.Request)
 	req.Operation = logical.ReadOperation
 	req.Path = path
-	authResults := acl.AllowOperation(req)
+	authResults := acl.AllowOperation(ctx, req, true)
 	return authResults.RootPrivs
 }
 
@@ -65,11 +95,13 @@ func (d dynamicSystemView) fetchTTLs() (def, max time.Duration) {
 	def = d.core.defaultLeaseTTL
 	max = d.core.maxLeaseTTL
 
-	if d.mountEntry.Config.DefaultLeaseTTL != 0 {
-		def = d.mountEntry.Config.DefaultLeaseTTL
-	}
-	if d.mountEntry.Config.MaxLeaseTTL != 0 {
-		max = d.mountEntry.Config.MaxLeaseTTL
+	if d.mountEntry != nil {
+		if d.mountEntry.Config.DefaultLeaseTTL != 0 {
+			def = d.mountEntry.Config.DefaultLeaseTTL
+		}
+		if d.mountEntry.Config.MaxLeaseTTL != 0 {
+			max = d.mountEntry.Config.MaxLeaseTTL
+		}
 	}
 
 	return
@@ -85,10 +117,22 @@ func (d dynamicSystemView) CachingDisabled() bool {
 	return d.core.cachingDisabled || (d.mountEntry != nil && d.mountEntry.Config.ForceNoCache)
 }
 
+func (d dynamicSystemView) LocalMount() bool {
+	return d.mountEntry != nil && d.mountEntry.Local
+}
+
 // Checks if this is a primary Vault instance. Caller should hold the stateLock
 // in read mode.
 func (d dynamicSystemView) ReplicationState() consts.ReplicationState {
-	return d.core.ReplicationState()
+	state := d.core.ReplicationState()
+	if d.core.perfStandby {
+		state |= consts.ReplicationPerformanceStandby
+	}
+	return state
+}
+
+func (d dynamicSystemView) HasFeature(feature license.Features) bool {
+	return d.core.HasFeature(feature)
 }
 
 // ResponseWrapData wraps the given data in a cubbyhole and returns the
@@ -141,4 +185,71 @@ func (d dynamicSystemView) LookupPlugin(ctx context.Context, name string) (*plug
 // MlockEnabled returns the configuration setting for enabling mlock on plugins.
 func (d dynamicSystemView) MlockEnabled() bool {
 	return d.core.enableMlock
+}
+
+func (d dynamicSystemView) EntityInfo(entityID string) (*logical.Entity, error) {
+	// Requests from token created from the token backend will not have entity information.
+	// Return missing entity instead of error when requesting from MemDB.
+	if entityID == "" {
+		return nil, nil
+	}
+
+	if d.core == nil {
+		return nil, fmt.Errorf("system view core is nil")
+	}
+	if d.core.identityStore == nil {
+		return nil, fmt.Errorf("system view identity store is nil")
+	}
+
+	// Retrieve the entity from MemDB
+	entity, err := d.core.identityStore.MemDBEntityByID(entityID, false)
+	if err != nil {
+		return nil, err
+	}
+	if entity == nil {
+		return nil, nil
+	}
+
+	// Return a subset of the data
+	ret := &logical.Entity{
+		ID:   entity.ID,
+		Name: entity.Name,
+	}
+
+	if entity.Metadata != nil {
+		ret.Metadata = make(map[string]string, len(entity.Metadata))
+		for k, v := range entity.Metadata {
+			ret.Metadata[k] = v
+		}
+	}
+
+	aliases := make([]*logical.Alias, len(entity.Aliases))
+	for i, a := range entity.Aliases {
+		alias := &logical.Alias{
+			MountAccessor: a.MountAccessor,
+			Name:          a.Name,
+		}
+		// MountType is not stored with the entity and must be looked up
+		if mount := d.core.router.validateMountByAccessor(a.MountAccessor); mount != nil {
+			alias.MountType = mount.MountType
+		}
+
+		if a.Metadata != nil {
+			alias.Metadata = make(map[string]string, len(a.Metadata))
+			for k, v := range a.Metadata {
+				alias.Metadata[k] = v
+			}
+		}
+
+		aliases[i] = alias
+	}
+	ret.Aliases = aliases
+
+	return ret, nil
+}
+
+func (d dynamicSystemView) PluginEnv(_ context.Context) (*logical.PluginEnvironment, error) {
+	return &logical.PluginEnvironment{
+		VaultVersion: version.GetVersion().Version,
+	}, nil
 }

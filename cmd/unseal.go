@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"os"
 	"time"
 
 	"github.com/hashicorp/vault/api"
@@ -10,9 +11,13 @@ import (
 )
 
 const cfgUnsealPeriod = "unseal-period"
+const cfgInit = "init"
+const cfgOnce = "once"
 
 type unsealCfg struct {
 	unsealPeriod time.Duration
+	proceedInit  bool
+	runOnce      bool
 }
 
 var unsealConfig unsealCfg
@@ -29,6 +34,12 @@ This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		appConfig.BindPFlag(cfgUnsealPeriod, cmd.PersistentFlags().Lookup(cfgUnsealPeriod))
+		appConfig.BindPFlag(cfgInit, cmd.PersistentFlags().Lookup(cfgInit))
+		appConfig.BindPFlag(cfgOnce, cmd.PersistentFlags().Lookup(cfgOnce))
+
+		unsealConfig.unsealPeriod = appConfig.GetDuration(cfgUnsealPeriod)
+		unsealConfig.proceedInit = appConfig.GetBool(cfgInit)
+		unsealConfig.runOnce = appConfig.GetBool(cfgOnce)
 
 		store, err := kvStoreForConfig(appConfig)
 
@@ -42,11 +53,11 @@ to quickly create a Cobra application.`,
 			logrus.Fatalf("error connecting to vault: %s", err.Error())
 		}
 
+		vaultConfig, err := vaultConfigForConfig(appConfig)
+
 		if err != nil {
 			logrus.Fatalf("error building vault config: %s", err.Error())
 		}
-
-		vaultConfig, err := vaultConfigForConfig(appConfig)
 
 		v, err := vault.New(store, cl, vaultConfig)
 
@@ -56,10 +67,20 @@ to quickly create a Cobra application.`,
 
 		for {
 			func() {
+				if unsealConfig.proceedInit {
+					logrus.Infof("initializing vault...")
+					if err = v.Init(); err != nil {
+						logrus.Fatalf("error initializing vault: %s", err.Error())
+					} else {
+						unsealConfig.proceedInit = false
+					}
+				}
+
 				logrus.Infof("checking if vault is sealed...")
 				sealed, err := v.Sealed()
 				if err != nil {
 					logrus.Errorf("error checking if vault is sealed: %s", err.Error())
+					exitIfNecessary(1)
 					return
 				}
 
@@ -67,24 +88,37 @@ to quickly create a Cobra application.`,
 
 				// If vault is not sealed, we stop here and wait another 30 seconds
 				if !sealed {
+					exitIfNecessary(0)
 					return
 				}
 
 				if err = v.Unseal(); err != nil {
 					logrus.Errorf("error unsealing vault: %s", err.Error())
+					exitIfNecessary(1)
 					return
 				}
 
 				logrus.Infof("successfully unsealed vault")
+
+				exitIfNecessary(0)
 			}()
+
 			// wait 30 seconds before trying again
-			time.Sleep(time.Second * 30)
+			time.Sleep(unsealConfig.unsealPeriod)
 		}
 	},
 }
 
+func exitIfNecessary(code int) {
+	if unsealConfig.runOnce {
+		os.Exit(code)
+	}
+}
+
 func init() {
 	unsealCmd.PersistentFlags().Duration(cfgUnsealPeriod, time.Second*30, "How often to attempt to unseal the vault instance")
+	unsealCmd.PersistentFlags().Bool(cfgInit, false, "Initialize vault instantce if not yet initialized")
+	unsealCmd.PersistentFlags().Bool(cfgOnce, false, "Execute unseal command only once")
 
 	RootCmd.AddCommand(unsealCmd)
 }

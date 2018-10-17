@@ -25,35 +25,44 @@ This is an authenticated endpoint.
 
 ```
 $ curl \
-    https://vault.rocks/v1/sys/replication/dr/status
+    http://127.0.0.1:8200/v1/sys/replication/dr/status
 ```
 
-### Sample Response
+### Sample Response from Primary
 
 The printed status of the replication environment. As an example, for a
 primary, it will look something like:
 
 ```json
 {
-  "mode": "primary",
-  "cluster_id": "d4095d41-3aee-8791-c421-9bc7f88f7c3e",
-  "known_secondaries": [],
-  "last_wal": 0,
-  "merkle_root": "c3260c4c682ff2d6eb3c8bfd877134b3cec022d1",
-  "request_id": "009ea98c-06cd-6dc3-74f2-c4904b22e535",
-  "lease_id": "",
-  "renewable": false,
-  "lease_duration": 0,
   "data": {
     "cluster_id": "d4095d41-3aee-8791-c421-9bc7f88f7c3e",
     "known_secondaries": [],
-    "last_wal": 0,
-    "merkle_root": "c3260c4c682ff2d6eb3c8bfd877134b3cec022d1",
+    "last_wal": 241,
+    "merkle_root": "56794a98e52598f35974024fba6691f047e772e9",
     "mode": "primary"
   },
-  "wrap_info": null,
-  "warnings": null,
-  "auth": null
+}
+```
+### Sample Response from Secondary
+
+The printed status of the replication environment. As an example, for a
+secondary, it will look something like:
+
+```json
+{
+  "data": {
+    "cluster_id": "d4095d41-3aee-8791-c421-9bc7f88f7c3e",
+    "known_primary_cluster_addrs": [
+      "https://127.0.0.1:8201"
+    ],
+    "last_remote_wal": 241,
+    "merkle_root": "56794a98e52598f35974024fba6691f047e772e9",
+    "mode": "secondary",
+    "primary_cluster_addr": "https://127.0.0.1:8201",
+    "secondary_id": "3",
+    "state": "stream-wals"
+  },
 }
 ```
 
@@ -87,7 +96,7 @@ $ curl \
     --header "X-Vault-Token: ..." \
     --request POST \
     --data @payload.json \
-    https://vault.rocks/v1/sys/replication/dr/primary/enable
+    http://127.0.0.1:8200/v1/sys/replication/dr/primary/enable
 ```
 
 ## Demote DR Primary
@@ -107,7 +116,7 @@ DR replication set without wiping local storage.
 $ curl \
     --header "X-Vault-Token: ..." \
     --request POST \
-    https://vault.rocks/v1/sys/replication/dr/primary/demote
+    http://127.0.0.1:8200/v1/sys/replication/dr/primary/demote
 ```
 
 ## Disable DR Primary
@@ -129,7 +138,7 @@ will require a wipe of the underlying storage.
 $ curl \
     --header "X-Vault-Token: ..." \
     --request POST \
-    https://vault.rocks/v1/sys/replication/dr/primary/disable
+    http://127.0.0.1:8200/v1/sys/replication/dr/primary/disable
 ```
 
 ## Generate DR Secondary Token
@@ -151,12 +160,22 @@ identifier can later be used to revoke a DR secondary's access.
 - `ttl` `(string: "30m")` – Specifies the TTL for the secondary activation
   token.
 
+### Sample Payload
+
+```json
+{
+  "id": "us-east-1"
+}
+```
+
 ### Sample Request
 
 ```
 $ curl \
     --header "X-Vault-Token: ..." \
-    https://vault.rocks/v1/sys/replication/dr/primary/secondary-token?id=us-east-1
+    --request POST \
+    --data @payload.json \
+    http://127.0.0.1:8200/v1/sys/replication/dr/primary/secondary-token
 ```
 
 ### Sample Response
@@ -207,7 +226,7 @@ $ curl \
     --header "X-Vault-Token: ..." \
     --request POST \
     --data @payload.json \
-    https://vault.rocks/v1/sys/replication/dr/primary/revoke-secondary
+    http://127.0.0.1:8200/v1/sys/replication/dr/primary/revoke-secondary
 ```
 
 ## Enable DR Secondary
@@ -254,7 +273,7 @@ $ curl \
     --header "X-Vault-Token: ..." \
     --request POST \
     --data @payload.json \
-    https://vault.rocks/v1/sys/replication/dr/secondary/enable
+    http://127.0.0.1:8200/v1/sys/replication/dr/secondary/enable
 ```
 
 ## Promote DR Secondary
@@ -266,7 +285,7 @@ secondaries, and there should never be more than one primary at a time.
 If the DR secondary's primary cluster is also in a performance replication set,
 the DR secondary will be promoted into that replication set. Care should be
 taken when promoting to ensure multiple performance primary clusters are not
-activate at the same time. 
+activate at the same time.
 
 If the DR secondary's primary cluster is a performance secondary, the promoted
 cluster will attempt to connect to the performance primary cluster using the
@@ -290,12 +309,15 @@ result in data loss!
   primary gives to secondary nodes. Useful if the primary's cluster address is
   not directly accessible and must be accessed via an alternate path/address
   (e.g. through a load balancer).
+- `force` `(bool: false)` - If true the cluster will be promoted even if it fails 
+  certain safety checks. Caution: Forcing promotion could result in data loss if 
+  data isn't fully replicated.
 
 ### Sample Payload
 
 ```json
 {
-  "key": "ijH8tphEHaBtgx+IvPfxDsSi2LV4j9k+Lad6eqT5cJw="
+  "dr_operation_token": "ijH8tphEHaBtgx+IvPfxDsSi2LV4j9k+Lad6eqT5cJw="
 }
 ```
 
@@ -306,7 +328,7 @@ $ curl \
     --header "X-Vault-Token: ..." \
     --request POST \
     --data @payload.json \
-    https://vault.rocks/v1/sys/replication/dr/secondary/promote
+    http://127.0.0.1:8200/v1/sys/replication/dr/secondary/promote
 ```
 
 ### Sample Response
@@ -373,7 +395,7 @@ docs](/api/system/replication-dr.html#generate-disaster-recovery-operation-token
   "dr_operation_token": "...",
   "token": "..."
 }
-``` 
+```
 
 ### Sample Request
 
@@ -382,15 +404,15 @@ $ curl \
     --header "X-Vault-Token: ..." \
     --request POST \
     --data @payload.json \
-    https://vault.rocks/v1/sys/replication/dr/secondary/update-primary
+    http://127.0.0.1:8200/v1/sys/replication/dr/secondary/update-primary
 ```
 
-# Generate Disaster Recovery Operation Token
+## Generate Disaster Recovery Operation Token
 
 The `/sys/replication/dr/secondary/generate-operation-token` endpoint is used to create a new Disaster
 Recovery operation token for a DR secondary. These tokens are used to authorize
 certain DR Operation. They should be treated like traditional root tokens by
-being generated with needed and deleted soon after.
+being generated when needed and deleted soon after.
 
 ## Read Generation Progress
 
@@ -405,7 +427,7 @@ attempt.
 
 ```
 $ curl \
-    https://vault.rocks/v1/sys/replication/dr/secondary/generate-operation-token/attempt
+    http://127.0.0.1:8200/v1/sys/replication/dr/secondary/generate-operation-token/attempt
 ```
 
 ### Sample Response
@@ -432,8 +454,7 @@ encode the final token, it will never be returned.
 ## Start Token Generation
 
 This endpoint initializes a new generation attempt. Only a single
-generation attempt can take place at a time. One (and only one) of `otp` or
-`pgp_key` are required.
+generation attempt can take place at a time. 
 
 | Method   | Path                         | Produces               |
 | :------- | :--------------------------- | :--------------------- |
@@ -441,29 +462,16 @@ generation attempt can take place at a time. One (and only one) of `otp` or
 
 ### Parameters
 
-- `otp` `(string: <required-unless-pgp>)` – Specifies a base64-encoded 16-byte
-  value. The raw bytes of the token will be XOR'd with this value before being
+- `pgp_key` `(string: <optional>)` – Specifies a base64-encoded PGP public key.
+  The raw bytes of the token will be encrypted with this value before being
   returned to the final unseal key provider.
-
-- `pgp_key` `(string: <required-unless-otp>)` – Specifies a base64-encoded PGP
-  public key. The raw bytes of the token will be encrypted with this value
-  before being returned to the final unseal key provider.
-
-### Sample Payload
-
-```json
-{
-  "otp": "CB23=="
-}
-```
 
 ### Sample Request
 
 ```
 $ curl \
     --request PUT \
-    --data @payload.json \
-    https://vault.rocks/v1/sys/replication/dr/secondary/generate-operation-token/attempt
+    http://127.0.0.1:8200/v1/sys/replication/dr/secondary/generate-operation-token/attempt
 ```
 
 ### Sample Response
@@ -475,7 +483,8 @@ $ curl \
   "progress": 1,
   "required": 3,
   "encoded_token": "",
-  "pgp_fingerprint": "816938b8a29146fbe245dd29e7cbaf8e011db793",
+  "otp": "2vPFYG8gUSW9npwzyvxXMug0",
+  "otp_length" :24,
   "complete": false
 }
 ```
@@ -494,7 +503,7 @@ progress made. This must be called to change the OTP or PGP key being used.
 ```
 $ curl \
     --request DELETE \
-    https://vault.rocks/v1/sys/replication/dr/secondary/generate-operation-token/attempt
+    http://127.0.0.1:8200/v1/sys/replication/dr/secondary/generate-operation-token/attempt
 ```
 
 ## Provide Key Share to Generate Token
@@ -530,7 +539,7 @@ nonce must be provided with each call.
 $ curl \
     --request PUT \
     --data @payload.json \
-    https://vault.rocks/v1/sys/replication/dr/secondary/generate-operation-token/update
+    http://127.0.0.1:8200/v1/sys/replication/dr/secondary/generate-operation-token/update
 ```
 
 ### Sample Response
@@ -550,9 +559,8 @@ status, and the encoded token, if the attempt is complete.
 }
 ```
 
-
 ## Delete DR Operation Token
- 
+
 This endpoint revokes the DR Operation Token. This token does not have a TTL
 and therefore should be deleted when it is no longer needed.
 
@@ -580,5 +588,5 @@ $ curl \
     --header "X-Vault-Token: ..." \
     --request POST \
     --data @payload.json \
-    https://vault.rocks/v1/sys/replication/dr/secondary/operation-token/delete
+    http://127.0.0.1:8200/v1/sys/replication/dr/secondary/operation-token/delete
 ```

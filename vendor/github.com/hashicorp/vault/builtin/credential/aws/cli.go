@@ -8,8 +8,10 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/vault/api"
 	"github.com/hashicorp/vault/helper/awsutil"
 )
@@ -18,26 +20,8 @@ type CLIHandler struct{}
 
 // Generates the necessary data to send to the Vault server for generating a token
 // This is useful for other API clients to use
-func GenerateLoginData(accessKey, secretKey, sessionToken, headerValue string) (map[string]interface{}, error) {
+func GenerateLoginData(creds *credentials.Credentials, headerValue string) (map[string]interface{}, error) {
 	loginData := make(map[string]interface{})
-
-	credConfig := &awsutil.CredentialsConfig{
-		AccessKey:    accessKey,
-		SecretKey:    secretKey,
-		SessionToken: sessionToken,
-	}
-	creds, err := credConfig.GenerateCredentialChain()
-	if err != nil {
-		return nil, err
-	}
-	if creds == nil {
-		return nil, fmt.Errorf("could not compile valid credential providers from static config, environment, shared, or instance metadata")
-	}
-
-	_, err = creds.Get()
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve credentials from credential chain: %v", err)
-	}
 
 	// Use the credentials we've found to construct an STS session
 	stsSession, err := session.NewSessionWithOptions(session.Options{
@@ -90,7 +74,12 @@ func (h *CLIHandler) Auth(c *api.Client, m map[string]string) (*api.Secret, erro
 		headerValue = ""
 	}
 
-	loginData, err := GenerateLoginData(m["aws_access_key_id"], m["aws_secret_access_key"], m["aws_security_token"], headerValue)
+	creds, err := RetrieveCreds(m["aws_access_key_id"], m["aws_secret_access_key"], m["aws_security_token"])
+	if err != nil {
+		return nil, err
+	}
+
+	loginData, err := GenerateLoginData(creds, headerValue)
 	if err != nil {
 		return nil, err
 	}
@@ -109,6 +98,27 @@ func (h *CLIHandler) Auth(c *api.Client, m map[string]string) (*api.Secret, erro
 	}
 
 	return secret, nil
+}
+
+func RetrieveCreds(accessKey, secretKey, sessionToken string) (*credentials.Credentials, error) {
+	credConfig := &awsutil.CredentialsConfig{
+		AccessKey:    accessKey,
+		SecretKey:    secretKey,
+		SessionToken: sessionToken,
+	}
+	creds, err := credConfig.GenerateCredentialChain()
+	if err != nil {
+		return nil, err
+	}
+	if creds == nil {
+		return nil, fmt.Errorf("could not compile valid credential providers from static config, environment, shared, or instance metadata")
+	}
+
+	_, err = creds.Get()
+	if err != nil {
+		return nil, errwrap.Wrapf("failed to retrieve credentials from credential chain: {{err}}", err)
+	}
+	return creds, nil
 }
 
 func (h *CLIHandler) Help() string {

@@ -6,9 +6,9 @@ import (
 	"reflect"
 	"testing"
 
-	log "github.com/mgutz/logxi/v1"
+	log "github.com/hashicorp/go-hclog"
 
-	"github.com/hashicorp/vault/helper/logformat"
+	"github.com/hashicorp/vault/helper/logging"
 	"github.com/hashicorp/vault/physical"
 	"github.com/hashicorp/vault/physical/inmem"
 )
@@ -23,15 +23,6 @@ func TestCore_Rekey_Lifecycle(t *testing.T) {
 		t.Fatalf("expected %d keys, got %d", bc.SecretShares-bc.StoredShares, len(masterKeys))
 	}
 	testCore_Rekey_Lifecycle_Common(t, c, masterKeys, false)
-
-	bc, _ = TestSealDefConfigs()
-	bc.SecretShares = 3
-	bc.SecretThreshold = 3
-	c, masterKeys, _, _ = TestCoreUnsealedWithConfigs(t, bc, nil)
-	if len(masterKeys) != 3 {
-		t.Fatalf("expected %d keys, got %d", bc.SecretShares-bc.StoredShares, len(masterKeys))
-	}
-	testCore_Rekey_Lifecycle_Common(t, c, masterKeys, false)
 }
 
 func testCore_Rekey_Lifecycle_Common(t *testing.T, c *Core, masterKeys [][]byte, recovery bool) {
@@ -41,12 +32,8 @@ func testCore_Rekey_Lifecycle_Common(t *testing.T, c *Core, masterKeys [][]byte,
 	}
 
 	// Should be no progress
-	num, err := c.RekeyProgress(recovery)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	if num != 0 {
-		t.Fatalf("bad: %d", num)
+	if _, _, err := c.RekeyProgress(recovery, false); err == nil {
+		t.Fatal("expected error from RekeyProgress")
 	}
 
 	// Should be no config
@@ -101,8 +88,10 @@ func testCore_Rekey_Lifecycle_Common(t *testing.T, c *Core, masterKeys [][]byte,
 }
 
 func TestCore_Rekey_Init(t *testing.T) {
-	c, _, _ := TestCoreUnsealed(t)
-	testCore_Rekey_Init_Common(t, c, false)
+	t.Run("barrier-rekey-init", func(t *testing.T) {
+		c, _, _ := TestCoreUnsealed(t)
+		testCore_Rekey_Init_Common(t, c, false)
+	})
 }
 
 func testCore_Rekey_Init_Common(t *testing.T, c *Core, recovery bool) {
@@ -121,6 +110,13 @@ func testCore_Rekey_Init_Common(t *testing.T, c *Core, recovery bool) {
 		SecretThreshold: 3,
 		SecretShares:    5,
 	}
+
+	// If recovery key is supported, set newConf
+	// to be a recovery seal config
+	if c.seal.RecoveryKeySupported() {
+		newConf.Type = c.seal.RecoveryType()
+	}
+
 	err = c.RekeyInit(newConf, recovery)
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -137,11 +133,13 @@ func TestCore_Rekey_Update(t *testing.T) {
 	bc, _ := TestSealDefConfigs()
 	bc.SecretShares = 1
 	bc.SecretThreshold = 1
+	bc.StoredShares = 0
 	c, masterKeys, _, root := TestCoreUnsealedWithConfigs(t, bc, nil)
 	testCore_Rekey_Update_Common(t, c, masterKeys, root, false)
 }
 
 func testCore_Rekey_Update_Common(t *testing.T, c *Core, keys [][]byte, root string, recovery bool) {
+	var err error
 	// Start a rekey
 	var expType string
 	if recovery {
@@ -155,15 +153,15 @@ func testCore_Rekey_Update_Common(t *testing.T, c *Core, keys [][]byte, root str
 		SecretThreshold: 3,
 		SecretShares:    5,
 	}
-	err := c.RekeyInit(newConf, recovery)
-	if err != nil {
-		t.Fatalf("err: %v", err)
+	hErr := c.RekeyInit(newConf, recovery)
+	if hErr != nil {
+		t.Fatalf("err: %v", hErr)
 	}
 
 	// Fetch new config with generated nonce
-	rkconf, err := c.RekeyConfig(recovery)
-	if err != nil {
-		t.Fatalf("err: %v", err)
+	rkconf, hErr := c.RekeyConfig(recovery)
+	if hErr != nil {
+		t.Fatalf("err: %v", hErr)
 	}
 	if rkconf == nil {
 		t.Fatalf("bad: no rekey config received")
@@ -180,23 +178,26 @@ func testCore_Rekey_Update_Common(t *testing.T, c *Core, keys [][]byte, root str
 			break
 		}
 	}
-	if result == nil || len(result.SecretShares) != newConf.SecretShares {
+	if result == nil {
+		t.Fatal("nil result after update")
+	}
+	if newConf.StoredShares > 0 {
+		if len(result.SecretShares) > 0 {
+			t.Fatal("got secret shares when should have been storing")
+		}
+	} else if len(result.SecretShares) != newConf.SecretShares {
 		t.Fatalf("rekey update error: %#v", result)
 	}
 
 	// Should be no progress
-	num, err := c.RekeyProgress(recovery)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	if num != 0 {
-		t.Fatalf("rekey progress error: %d", num)
+	if _, _, err := c.RekeyProgress(recovery, false); err == nil {
+		t.Fatal("expected error from RekeyProgress")
 	}
 
 	// Should be no config
-	conf, err := c.RekeyConfig(recovery)
-	if err != nil {
-		t.Fatalf("rekey config error: %v", err)
+	conf, hErr := c.RekeyConfig(recovery)
+	if hErr != nil {
+		t.Fatalf("rekey config error: %v", hErr)
 	}
 	if conf != nil {
 		t.Fatalf("rekey config should be nil, got: %v", conf)
@@ -221,6 +222,13 @@ func testCore_Rekey_Update_Common(t *testing.T, c *Core, keys [][]byte, root str
 		t.Fatalf("\nexpected: %#v\nactual: %#v\nexpType: %s\nrecovery: %t", newConf, sealConf, expType, recovery)
 	}
 
+	// At this point bail if we are rekeying the barrier key with recovery
+	// keys, since a new rekey should still be using the same set of recovery
+	// keys and we haven't been returned key shares in this mode.
+	if !recovery && c.seal.RecoveryKeySupported() {
+		return
+	}
+
 	// Attempt unseal if this was not recovery mode
 	if !recovery {
 		err = c.Seal(root)
@@ -233,18 +241,12 @@ func testCore_Rekey_Update_Common(t *testing.T, c *Core, keys [][]byte, root str
 				t.Fatalf("err: %v", err)
 			}
 		}
-		if sealed, _ := c.Sealed(); sealed {
+		if c.Sealed() {
 			t.Fatalf("should be unsealed")
 		}
 	}
 
 	// Start another rekey, this time we require a quorum!
-	// Skip this step if we are rekeying the barrier key with
-	// recovery keys, since a new rekey should still be using
-	// the same set of recovery keys.
-	if !recovery && c.seal.RecoveryKeySupported() {
-		return
-	}
 
 	newConf = &SealConfig{
 		Type:            expType,
@@ -274,12 +276,14 @@ func testCore_Rekey_Update_Common(t *testing.T, c *Core, keys [][]byte, root str
 		}
 
 		// Should be progress
-		num, err := c.RekeyProgress(recovery)
-		if err != nil {
-			t.Fatalf("err: %v", err)
-		}
-		if (i == 2 && num != 0) || (i != 2 && num != i+1) {
-			t.Fatalf("bad: %d", num)
+		if i < 2 {
+			_, num, err := c.RekeyProgress(recovery, false)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			if num != i+1 {
+				t.Fatalf("bad: %d", num)
+			}
 		}
 	}
 	if result == nil || len(result.SecretShares) != 1 {
@@ -363,9 +367,9 @@ func testCore_Rekey_Invalid_Common(t *testing.T, c *Core, keys [][]byte, recover
 	}
 }
 
-func TestCore_Standby_Rekey(t *testing.T) {
+func TestCore_Rekey_Standby(t *testing.T) {
 	// Create the first core and initialize it
-	logger := logformat.NewVaultLogger(log.LevelTrace)
+	logger := logging.NewVaultLogger(log.Trace)
 
 	inm, err := inmem.NewInmemHA(nil, logger)
 	if err != nil {

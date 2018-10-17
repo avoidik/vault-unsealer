@@ -5,8 +5,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
+	"github.com/hashicorp/vault/helper/base62"
 	"github.com/hashicorp/vault/vault"
 )
 
@@ -14,7 +16,7 @@ func handleSysGenerateRootAttempt(core *vault.Core, generateStrategy vault.Gener
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
-			handleSysGenerateRootAttemptGet(core, w, r)
+			handleSysGenerateRootAttemptGet(core, w, r, "")
 		case "POST", "PUT":
 			handleSysGenerateRootAttemptPut(core, w, r, generateStrategy)
 		case "DELETE":
@@ -25,7 +27,7 @@ func handleSysGenerateRootAttempt(core *vault.Core, generateStrategy vault.Gener
 	})
 }
 
-func handleSysGenerateRootAttemptGet(core *vault.Core, w http.ResponseWriter, r *http.Request) {
+func handleSysGenerateRootAttemptGet(core *vault.Core, w http.ResponseWriter, r *http.Request, otp string) {
 	ctx, cancel := core.GetContext()
 	defer cancel()
 
@@ -36,8 +38,7 @@ func handleSysGenerateRootAttemptGet(core *vault.Core, w http.ResponseWriter, r 
 		return
 	}
 	if barrierConfig == nil {
-		respondError(w, http.StatusBadRequest, fmt.Errorf(
-			"server is not yet initialized"))
+		respondError(w, http.StatusBadRequest, fmt.Errorf("server is not yet initialized"))
 		return
 	}
 
@@ -66,10 +67,12 @@ func handleSysGenerateRootAttemptGet(core *vault.Core, w http.ResponseWriter, r 
 
 	// Format the status
 	status := &GenerateRootStatusResponse{
-		Started:  false,
-		Progress: progress,
-		Required: sealConfig.SecretThreshold,
-		Complete: false,
+		Started:   false,
+		Progress:  progress,
+		Required:  sealConfig.SecretThreshold,
+		Complete:  false,
+		OTPLength: vault.TokenLength,
+		OTP:       otp,
 	}
 	if generationConfig != nil {
 		status.Nonce = generationConfig.Nonce
@@ -83,24 +86,37 @@ func handleSysGenerateRootAttemptGet(core *vault.Core, w http.ResponseWriter, r 
 func handleSysGenerateRootAttemptPut(core *vault.Core, w http.ResponseWriter, r *http.Request, generateStrategy vault.GenerateRootStrategy) {
 	// Parse the request
 	var req GenerateRootInitRequest
-	if err := parseRequest(r, w, &req); err != nil {
+	if err := parseRequest(r, w, &req); err != nil && err != io.EOF {
 		respondError(w, http.StatusBadRequest, err)
 		return
 	}
 
-	if len(req.OTP) > 0 && len(req.PGPKey) > 0 {
-		respondError(w, http.StatusBadRequest, fmt.Errorf("only one of \"otp\" and \"pgp_key\" must be specified"))
-		return
+	var err error
+	var genned bool
+
+	switch {
+	case len(req.PGPKey) > 0, len(req.OTP) > 0:
+	default:
+		genned = true
+		req.OTP, err = base62.Random(vault.TokenLength, true)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, err)
+			return
+		}
 	}
 
 	// Attemptialize the generation
-	err := core.GenerateRootInit(req.OTP, req.PGPKey, generateStrategy)
-	if err != nil {
+	if err := core.GenerateRootInit(req.OTP, req.PGPKey, generateStrategy); err != nil {
 		respondError(w, http.StatusBadRequest, err)
 		return
 	}
 
-	handleSysGenerateRootAttemptGet(core, w, r)
+	if genned {
+		handleSysGenerateRootAttemptGet(core, w, r, req.OTP)
+		return
+	}
+
+	handleSysGenerateRootAttemptGet(core, w, r, "")
 }
 
 func handleSysGenerateRootAttemptDelete(core *vault.Core, w http.ResponseWriter, r *http.Request) {
@@ -185,6 +201,8 @@ type GenerateRootStatusResponse struct {
 	EncodedToken     string `json:"encoded_token"`
 	EncodedRootToken string `json:"encoded_root_token"`
 	PGPFingerprint   string `json:"pgp_fingerprint"`
+	OTP              string `json:"otp"`
+	OTPLength        int    `json:"otp_length"`
 }
 
 type GenerateRootUpdateRequest struct {
