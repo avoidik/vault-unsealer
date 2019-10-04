@@ -29,7 +29,7 @@ var unsealCmd = &cobra.Command{
 	Long: `This command will verify the Cloud KMS service is accessible, then
 	run "vault unseal" against the target Vault instance, using keys from Cloud KMS keyring.
 
-	if  --init flag is specified target vault instance will be initialized befor unsiling.`,
+	if  --init flag is specified target vault instance will be initialized befor unsealing.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		appConfig.BindPFlag(cfgUnsealPeriod, cmd.PersistentFlags().Lookup(cfgUnsealPeriod))
 		appConfig.BindPFlag(cfgInit, cmd.PersistentFlags().Lookup(cfgInit))
