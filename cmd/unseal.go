@@ -25,13 +25,11 @@ var unsealConfig unsealCfg
 // unsealCmd represents the unseal command
 var unsealCmd = &cobra.Command{
 	Use:   "unseal",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Unseals the target Vault instance",
+	Long: `This command will verify the Cloud KMS service is accessible, then
+	run "vault unseal" against the target Vault instance, using keys from Cloud KMS keyring.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	if  --init flag is specified target vault instance will be initialized befor unsiling.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		appConfig.BindPFlag(cfgUnsealPeriod, cmd.PersistentFlags().Lookup(cfgUnsealPeriod))
 		appConfig.BindPFlag(cfgInit, cmd.PersistentFlags().Lookup(cfgInit))
