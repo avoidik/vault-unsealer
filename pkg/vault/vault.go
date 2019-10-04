@@ -157,8 +157,10 @@ func (u *vault) Init() error {
 	}
 
 	resp, err := u.cl.Sys().Init(&api.InitRequest{
-		SecretShares:    u.config.SecretShares,
-		SecretThreshold: u.config.SecretThreshold,
+		SecretShares:      u.config.SecretShares,
+		SecretThreshold:   u.config.SecretThreshold,
+		RecoveryShares:    u.config.SecretShares,
+		RecoveryThreshold: u.config.SecretThreshold,
 	})
 
 	if err != nil {
