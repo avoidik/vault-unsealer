@@ -167,7 +167,18 @@ func (u *vault) Init() error {
 		return fmt.Errorf("error initialising vault: %s", err.Error())
 	}
 
+	// If Usece with kms auto unseal this slice will be empty
 	for i, k := range resp.Keys {
+		keyID := u.unsealKeyForID(i)
+		err := u.keyStoreSet(keyID, []byte(k))
+
+		if err != nil {
+			return fmt.Errorf("error storing unseal key '%s': %s", keyID, err.Error())
+		}
+	}
+
+	// If Usece with out kms auto unseal this slice will be empty
+	for i, k := range resp.RecoveryKeys {
 		keyID := u.unsealKeyForID(i)
 		err := u.keyStoreSet(keyID, []byte(k))
 
